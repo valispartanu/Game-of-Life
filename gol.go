@@ -30,49 +30,57 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		}
 	}
 
+	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
+	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
+
 	// Calculate the new state of Game of Life after the given number of turns.
 	for turns := 0; turns < p.turns; turns++ {
+		changes := []cell{}
 		for y := 0; y < p.imageHeight; y++ {
 			for x := 0; x < p.imageWidth; x++ {
 				// Placeholder for the actual Game of Life logic: flips alive cells to dead and dead cells to alive.
 				nb := 0
+				for i := 0; i < 8; i++ {
+					c := x + dx[i]
+					l := y + dy[i]
+					if c == -1 {
+						c = p.imageWidth - 1
+					}
+					if l == -1 {
+						l = p.imageHeight - 1
+					}
+					if c == p.imageWidth {
+						c = 0
+					}
+					if l == p.imageHeight {
+						l = 0
+					}
+					if world[l][c] != 0 {
+						nb++
+					}
+
+				}
+
 				if world[y][x] != 0 {
-					for i := x - 1; i <= x+1; i++ {
-						if i < 0 {
-							i = p.imageWidth + i
-						}
-						if y < 0 {
-							y = p.imageHeight + y
-						}
-						if world[y-1][i] != 0 {
-							nb++
-						}
-						if world[y+1][i] != 0 {
-							nb++
-						}
-					}
-					if x < 0 {
-						x = p.imageWidth + x
-					}
-					if y < 0 {
-						y = p.imageHeight + y
-					}
-					if world[y][x-1] != 0 {
-						nb++
-					}
-					if world[y][x+1] != 0 {
-						nb++
-					}
 					if nb < 2 || nb > 3 {
-						world[y][x] = 0
+						changes = append(changes, cell{x, y})
+						fmt.Println("cell", x, y, "is dead now.")
 					}
 				} else {
 					if nb == 3 {
-						world[y][x] = world[y][x] ^ 0xFF
+						changes = append(changes, cell{x, y})
+						fmt.Println("cell", x, y, "is alive now.")
 					}
 				}
 
 				//world[y][x] = world[y][x] ^ 0xFF
+			}
+		}
+		for _, change := range changes {
+			if world[change.y][change.x] != 0 {
+				world[change.y][change.x] = 0
+			} else {
+				world[change.y][change.x] = 255
 			}
 		}
 	}
