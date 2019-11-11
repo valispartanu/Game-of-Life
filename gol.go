@@ -35,7 +35,44 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		for y := 0; y < p.imageHeight; y++ {
 			for x := 0; x < p.imageWidth; x++ {
 				// Placeholder for the actual Game of Life logic: flips alive cells to dead and dead cells to alive.
-				world[y][x] = world[y][x] ^ 0xFF
+				nb := 0
+				if world[y][x] != 0 {
+					for i := x - 1; i <= x+1; i++ {
+						if i < 0 {
+							i = p.imageWidth + i
+						}
+						if y < 0 {
+							y = p.imageHeight + y
+						}
+						if world[y-1][i] != 0 {
+							nb++
+						}
+						if world[y+1][i] != 0 {
+							nb++
+						}
+					}
+					if x < 0 {
+						x = p.imageWidth + x
+					}
+					if y < 0 {
+						y = p.imageHeight + y
+					}
+					if world[y][x-1] != 0 {
+						nb++
+					}
+					if world[y][x+1] != 0 {
+						nb++
+					}
+					if nb < 2 || nb > 3 {
+						world[y][x] = 0
+					}
+				} else {
+					if nb == 3 {
+						world[y][x] = world[y][x] ^ 0xFF
+					}
+				}
+
+				//world[y][x] = world[y][x] ^ 0xFF
 			}
 		}
 	}
