@@ -96,6 +96,12 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		}
 	}
 
+	for y := 0; y < p.imageHeight; y++ {
+		for x := 0; x < p.imageWidth; x++ {
+			d.io.outputVal <- world[y][x]
+		}
+	}
+
 	// Make sure that the Io has finished any output before exiting.
 	d.io.command <- ioCheckIdle
 	<-d.io.idle
