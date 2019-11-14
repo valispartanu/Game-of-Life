@@ -6,6 +6,19 @@ import (
 	"strings"
 )
 
+func allocateSlice(p golParams) {
+	world := make([][]byte, p.imageHeight)
+	for i := range world {
+		world[i] = make([]byte, p.imageWidth)
+	}
+}
+func worker(p golParams, ch chan []cell) {
+
+}
+func update(o [][]byte, n [][]byte, w int, h int) {
+	//o = allocateSlice()
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
 
@@ -96,8 +109,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		}
 	}
 
+	d.io.command <- ioOutput
+	d.io.filename <- "filename.pgm"
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
+			//fmt.Println("za esec")
 			d.io.outputVal <- world[y][x]
 		}
 	}

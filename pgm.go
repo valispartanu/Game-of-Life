@@ -38,16 +38,10 @@ func writePgmImage(p golParams, i ioChans) {
 		world[i] = make([]byte, p.imageWidth)
 	}
 
-	// TODO: write a for-loop to receive the world from the distributor when outputting.
-
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
 			world[y][x] = <-i.distributor.outputVal
-		}
-	}
-
-	for y := 0; y < p.imageHeight; y++ {
-		for x := 0; x < p.imageWidth; x++ {
+			fmt.Println("message")
 			_, ioError = file.Write([]byte{world[y][x]})
 			check(ioError)
 		}
