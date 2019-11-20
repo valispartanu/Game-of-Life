@@ -13,13 +13,17 @@ func allocateSlice(p golParams) [][]byte {
 	}
 	return world
 }
-func worker(p golParams, input chan cell, changes chan cell, thread int, nca int) {
+func worker(p golParams, input chan cell, changes chan cell, thread int) {
 
 	fmt.Println("Starting worker")
 	world := allocateSlice(p)
-	for i := 1; i <= nca; i++ {
-		c := <-input
-		world[c.y][c.x] = 255
+	for {
+		c, ok := <-input
+		if ok == false {
+			break
+		} else {
+			world[c.y][c.x] = 255
+		}
 	}
 	fmt.Println("Starting logic")
 	line1 := (p.imageHeight / p.threads) * thread
@@ -68,12 +72,15 @@ func worker(p golParams, input chan cell, changes chan cell, thread int, nca int
 			}
 		}
 	}
+	close(changes)
 
 }
 func update(world [][]byte, output chan cell) {
 
 	for {
+		//fmt.Println("waiting for updates...")
 		c := <-output
+		//fmt.Println("update received")
 		if world[c.y][c.x] != 0 {
 			world[c.y][c.x] = 0
 		} else {
@@ -83,55 +90,25 @@ func update(world [][]byte, output chan cell) {
 
 }
 
-func sendData(output chan cell, world [][]byte, line1 int, line2 int, p golParams) int {
+func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golParams) {
 
 	fmt.Println("Starting sending", line1, line2)
 	nca := 0
 	for i := line1; i < line2; i++ {
-		fmt.Println("Starting sending", i)
+		//fmt.Println("Starting sending", i)
 		for j := 0; j < p.imageWidth; j++ {
+			//fmt.Println(i, " " , j)
 			if world[i][j] != 0 {
 				nca++
-				output <- cell{j, i}
+				//fmt.Println("Alive cell found, starting to send it")
+				c := cell{j, i}
+				output <- c
+				//fmt.Println("Alive cell found, sent it")
 			}
 		}
 	}
-
-	fmt.Println("Starting sending")
-	if line1 == 0 {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[p.imageHeight-1][j] != 0 {
-				nca++
-				output <- cell{j, p.imageHeight - 1}
-			}
-		}
-	} else {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[line1-1][j] != 0 {
-				nca++
-				output <- cell{j, line1 - 1}
-			}
-		}
-	}
-
-	if line2 == p.imageHeight {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[0][j] != 0 {
-				nca++
-				output <- cell{j, 0}
-			}
-		}
-	} else {
-
-		for j := 0; j < p.imageWidth; j++ {
-			if world[line2][j] != 0 {
-				nca++
-				output <- cell{j, line2}
-			}
-		}
-	}
-	return nca
-
+	//fmt.Println("finished sending")
+	close(output)
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -147,35 +124,36 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	// Request the io goroutine to read in the image with the given filename.
 	d.io.command <- ioInput
 	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
+	for turns := 0; turns < p.turns; turns++ {
 
-	// The io goroutine sends the requested image byte by byte, in rows.
-	for y := 0; y < p.imageHeight; y++ {
-		for x := 0; x < p.imageWidth; x++ {
-			val := <-d.io.inputVal
-			if val != 0 {
-				fmt.Println("Alive cell at", x, y)
-				world[y][x] = val
+		// The io goroutine sends the requested image byte by byte, in rows.
+		for y := 0; y < p.imageHeight; y++ {
+			for x := 0; x < p.imageWidth; x++ {
+				val := <-d.io.inputVal
+				if val != 0 {
+					fmt.Println("Alive cell at", x, y)
+					world[y][x] = val
+				}
 			}
 		}
+
+		changes := make(chan cell)
+		//nc := 0
+		fmt.Println("Starting goroutinrs")
+		for i := 0; i < p.threads; i++ {
+
+			line1 := (p.imageHeight / p.threads) * i
+			line2 := (p.imageHeight / p.threads) * (i + 1)
+			input := make(chan cell)
+			go sendData(input, world, line1, line2, p)
+			fmt.Println("starting worker")
+			go worker(p, input, changes, 1)
+			//go worker(p, alive)
+		}
+
+		//fmt.Println("Finished goroutinrs")
+		go update(world, changes)
 	}
-
-	//TODO send cells to each worked using sendata function, split lines between them, collect changes int changes channel, update the world
-
-	changes := make(chan cell)
-	//nc := 0
-	fmt.Println("Starting goroutinrs")
-	for i := 0; i < p.threads; i++ {
-
-		line1 := (p.imageHeight / p.threads) * i
-		line2 := (p.imageHeight / p.threads) * (i + 1)
-		input := make(chan cell)
-		nca := sendData(input, world, line1, line2, p)
-		go worker(p, input, changes, i, nca)
-		//go worker(p, alive)
-	}
-	fmt.Println("Finished goroutinrs")
-	go update(world, changes)
-
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
 	// Go through the world and append the cells that are still alive.
