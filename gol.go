@@ -15,7 +15,6 @@ func allocateSlice(p golParams) [][]byte {
 }
 func worker(p golParams, input chan cell, changes chan cell, thread int) {
 
-	fmt.Println("Starting worker")
 	world := allocateSlice(p)
 	for {
 		c, ok := <-input
@@ -25,11 +24,10 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			world[c.y][c.x] = 255
 		}
 	}
-	fmt.Println("Starting logic")
 	line1 := (p.imageHeight / p.threads) * thread
+	fmt.Println("line1", line1)
 	line2 := (p.imageHeight / p.threads) * (thread + 1)
-
-	//nc := 0
+	fmt.Println("line2", line2)
 
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
@@ -54,33 +52,28 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 				if world[l][c] != 0 {
 					nb++
 				}
-
 			}
 
 			if world[y][x] != 0 {
 				if nb < 2 || nb > 3 {
 					changes <- cell{x, y}
-					//nc++
 					fmt.Println("cell", x, y, "is dead now.")
 				}
 			} else {
 				if nb == 3 {
 					changes <- cell{x, y}
-					//nc++
 					fmt.Println("cell", x, y, "is alive now.")
 				}
 			}
 		}
 	}
-	//close(changes)
-
+	update(world, changes)
+	//time.Sleep(2 * time.Second)
 }
 func update(world [][]byte, output chan cell) {
 
 	for {
-		//fmt.Println("waiting for updates...")
 		c := <-output
-		//fmt.Println("update received")
 		if world[c.y][c.x] != 0 {
 			world[c.y][c.x] = 0
 		} else {
@@ -92,22 +85,14 @@ func update(world [][]byte, output chan cell) {
 
 func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golParams) {
 
-	fmt.Println("Starting sending", line1, line2)
-	nca := 0
 	for i := line1; i < line2; i++ {
-		//fmt.Println("Starting sending", i)
 		for j := 0; j < p.imageWidth; j++ {
-			//fmt.Println(i, " " , j)
 			if world[i][j] != 0 {
-				nca++
-				//fmt.Println("Alive cell found, starting to send it")
 				c := cell{j, i}
 				output <- c
-				//fmt.Println("Alive cell found, sent it")
 			}
 		}
 	}
-	//fmt.Println("finished sending")
 	close(output)
 }
 
@@ -116,10 +101,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 	// Create the 2D slice to store the world.
 	world := allocateSlice(p)
-	/*:= make([][]byte, p.imageHeight)
-	for i := range world {
-		world[i] = make([]byte, p.imageWidth)
-	}*/
 
 	// Request the io goroutine to read in the image with the given filename.
 	d.io.command <- ioInput
@@ -136,24 +117,18 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	}
 
 	for turns := 0; turns < p.turns; turns++ {
-		fmt.Println("Entering for loop")
 		// The io goroutine sends the requested image byte by byte, in rows.
 		changes := make(chan cell)
-		//nc := 0
-		fmt.Println("Starting goroutinrs")
 		for i := 0; i < p.threads; i++ {
 
 			line1 := (p.imageHeight / p.threads) * i
+			//fmt.Println("line1",line1)
 			line2 := (p.imageHeight / p.threads) * (i + 1)
+			//fmt.Println("line2",line2)
 			input := make(chan cell)
 			go sendData(input, world, line1, line2, p)
-			fmt.Println("starting worker")
-			go worker(p, input, changes, 1)
-			//go worker(p, alive)
+			go worker(p, input, changes, i)
 		}
-
-		//fmt.Println("Finished goroutinrs")
-		go update(world, changes)
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
@@ -167,7 +142,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	}
 
 	d.io.command <- ioOutput
-	d.io.filename <- "filename.pgm"
+	d.io.filename <- "filename"
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
 			d.io.outputVal <- world[y][x]
