@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func allocateSlice(p golParams) [][]byte {
@@ -67,7 +68,7 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			}
 		}
 	}
-	update(world, changes)
+	//update(world, changes)
 	//time.Sleep(2 * time.Second)
 }
 func update(world [][]byte, output chan cell) {
@@ -90,6 +91,34 @@ func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golPar
 			if world[i][j] != 0 {
 				c := cell{j, i}
 				output <- c
+			}
+		}
+	}
+	if line1 == 0 {
+		for j := 0; j < p.imageWidth; j++ {
+			if world[p.imageHeight-1][j] != 0 {
+				output <- cell{j, p.imageHeight - 1}
+			}
+		}
+	} else {
+		for j := 0; j < p.imageWidth; j++ {
+			if world[line1-1][j] != 0 {
+				output <- cell{j, line1 - 1}
+			}
+		}
+	}
+
+	if line2 == p.imageHeight {
+		for j := 0; j < p.imageWidth; j++ {
+			if world[0][j] != 0 {
+				output <- cell{j, 0}
+			}
+		}
+	} else {
+
+		for j := 0; j < p.imageWidth; j++ {
+			if world[line2][j] != 0 {
+				output <- cell{j, line2}
 			}
 		}
 	}
@@ -127,8 +156,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			//fmt.Println("line2",line2)
 			input := make(chan cell)
 			go sendData(input, world, line1, line2, p)
+			time.Sleep(2 * time.Second)
 			go worker(p, input, changes, i)
 		}
+
+		go update(world, changes)
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell

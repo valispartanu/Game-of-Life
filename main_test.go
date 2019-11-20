@@ -111,7 +111,7 @@ func Test(t *testing.T) {
 			},
 		}},
 
-		/*{"16x16x2-100", args{
+		{"16x16x2-100", args{
 			p: golParams{
 				turns:       100,
 				threads:     2,
@@ -125,9 +125,9 @@ func Test(t *testing.T) {
 				{x: 13, y: 14},
 				{x: 14, y: 15},
 			},
-		}},*/
+		}},
 
-		/*{"16x16x4-100", args{
+		{"16x16x4-100", args{
 			p: golParams{
 				turns:       100,
 				threads:     4,
@@ -141,9 +141,9 @@ func Test(t *testing.T) {
 				{x: 13, y: 14},
 				{x: 14, y: 15},
 			},
-		}},*/
+		}},
 
-		/*{"16x16x8-100", args{
+		{"16x16x8-100", args{
 			p: golParams{
 				turns:       100,
 				threads:     8,
@@ -157,7 +157,7 @@ func Test(t *testing.T) {
 				{x: 13, y: 14},
 				{x: 14, y: 15},
 			},
-		}},*/
+		}},
 
 		// Special test to be used to generate traces - not a real test
 		//{"trace", args{
