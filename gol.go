@@ -156,11 +156,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			//fmt.Println("line2",line2)
 			input := make(chan cell)
 			go sendData(input, world, line1, line2, p)
-			time.Sleep(2 * time.Second)
 			go worker(p, input, changes, i)
 		}
 
 		go update(world, changes)
+		time.Sleep(1 * time.Second)
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
