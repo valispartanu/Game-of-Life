@@ -72,7 +72,7 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			}
 		}
 	}
-	close(changes)
+	//close(changes)
 
 }
 func update(world [][]byte, output chan cell) {
@@ -124,19 +124,20 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	// Request the io goroutine to read in the image with the given filename.
 	d.io.command <- ioInput
 	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
-	for turns := 0; turns < p.turns; turns++ {
 
-		// The io goroutine sends the requested image byte by byte, in rows.
-		for y := 0; y < p.imageHeight; y++ {
-			for x := 0; x < p.imageWidth; x++ {
-				val := <-d.io.inputVal
-				if val != 0 {
-					fmt.Println("Alive cell at", x, y)
-					world[y][x] = val
-				}
+	for y := 0; y < p.imageHeight; y++ {
+		for x := 0; x < p.imageWidth; x++ {
+			val := <-d.io.inputVal
+			if val != 0 {
+				fmt.Println("Alive cell at", x, y)
+				world[y][x] = val
 			}
 		}
+	}
 
+	for turns := 0; turns < p.turns; turns++ {
+		fmt.Println("Entering for loop")
+		// The io goroutine sends the requested image byte by byte, in rows.
 		changes := make(chan cell)
 		//nc := 0
 		fmt.Println("Starting goroutinrs")
