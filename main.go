@@ -125,7 +125,7 @@ func main() {
 
 	flag.Parse()
 
-	params.turns = 10000
+	params.turns = 10000000000
 
 	startControlServer(params)
 	go getKeyboardCommand(k)

@@ -148,9 +148,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	var running = true
 	var paused = false
 	for turns := 0; turns < p.turns && running == true; turns++ {
-		// The io goroutine sends the requested image byte by byte, in rows.
 
-		fmt.Println("entering select")
 		select {
 		case ch := <-k:
 			if ch == 'q' {
@@ -167,7 +165,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				}
 			}
 		default:
-			fmt.Println("key wasn't pressed")
 		}
 
 		if paused == true {
