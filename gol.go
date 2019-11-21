@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func allocateSlice(p golParams) [][]byte {
@@ -72,7 +73,7 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 	//time.Sleep(2 * time.Second)
 	close(changes)
 }
-func update(world [][]byte, output chan cell) {
+func update(world [][]byte, output chan cell, wg *sync.WaitGroup) {
 
 	for {
 		c, ok := <-output
@@ -86,6 +87,7 @@ func update(world [][]byte, output chan cell) {
 			}
 		}
 	}
+	wg.Done()
 
 }
 
@@ -171,9 +173,12 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			go worker(p, input, chans[i], i)
 		}
 
+		var wg sync.WaitGroup
 		for i := 0; i < p.threads; i++ {
-			update(world, chans[i])
+			wg.Add(1)
+			go update(world, chans[i], &wg)
 		}
+		wg.Wait()
 		//time.Sleep(7*time.Second)
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
