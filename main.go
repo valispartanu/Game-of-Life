@@ -103,7 +103,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 func main() {
 	var params golParams
 	k := make(chan rune)
-	StopControlServer()
+	// StopControlServer()
 
 	flag.IntVar(
 		&params.threads,
@@ -125,9 +125,8 @@ func main() {
 
 	flag.Parse()
 
-	params.turns = 10000000000
+	params.turns = 10000
 
-	startControlServer(params)
 	startControlServer(params)
 	go getKeyboardCommand(k)
 	gameOfLife(params, k)

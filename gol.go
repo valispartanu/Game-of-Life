@@ -129,7 +129,6 @@ func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golPar
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan rune) {
-
 	// Create the 2D slice to store the world.
 	world := allocateSlice(p)
 
@@ -146,48 +145,79 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			}
 		}
 	}
-	var running := true
-	for turns := 0; turns < p.turns && running==true; turns++ {
+	var running = true
+	var paused = false
+	for turns := 0; turns < p.turns && running == true; turns++ {
 		// The io goroutine sends the requested image byte by byte, in rows.
 
-		chans := make([]chan cell, p.threads)
-		for i := 0; i < p.threads; i++ {
-			chans[i] = make(chan cell, 10)
+		fmt.Println("entering select")
+		select {
+		case ch := <-k:
+			if ch == 'q' {
+				running = false
+			}
+			if ch == 's' {
+				printPGM(world, d, p)
+			}
+			if ch == 'p' {
+				paused = !paused
+			}
+		default:
+			fmt.Println("key wasn't pressed")
 		}
 
-		for i := 0; i < p.threads; i++ {
+		if paused == true {
+			turns--
+		} else {
+			chans := make([]chan cell, p.threads)
+			for i := 0; i < p.threads; i++ {
+				chans[i] = make(chan cell, 10)
+			}
 
-			line1 := (p.imageHeight / p.threads) * i
-			line2 := (p.imageHeight / p.threads) * (i + 1)
-			input := make(chan cell, 10)
-			go worker(p, input, chans[i], i)
-			sendData(input, world, line1, line2, p)
-		}
+			for i := 0; i < p.threads; i++ {
 
-		var wg sync.WaitGroup
-		for i := 0; i < p.threads; i++ {
-			wg.Add(1)
-			go update(world, chans[i], &wg)
+				line1 := (p.imageHeight / p.threads) * i
+				line2 := (p.imageHeight / p.threads) * (i + 1)
+				input := make(chan cell, 10)
+				go worker(p, input, chans[i], i)
+				sendData(input, world, line1, line2, p)
+			}
+
+			var wg sync.WaitGroup
+			for i := 0; i < p.threads; i++ {
+				wg.Add(1)
+				go update(world, chans[i], &wg)
+			}
+			wg.Wait()
+			//select {
+			//case s:
+			//case p:
+			//case q:
+
+			//}
 		}
-		wg.Wait()
-		//select {
-		//case s:
-		//case p:
-		//case q:
-			
-		//}
-	}
-	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
-	var finalAlive []cell
-	// Go through the world and append the cells that are still alive.
-	for y := 0; y < p.imageHeight; y++ {
-		for x := 0; x < p.imageWidth; x++ {
-			if world[y][x] != 0 {
-				finalAlive = append(finalAlive, cell{x: x, y: y})
+		// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
+		var finalAlive []cell
+		// Go through the world and append the cells that are still alive.
+		for y := 0; y < p.imageHeight; y++ {
+			for x := 0; x < p.imageWidth; x++ {
+				if world[y][x] != 0 {
+					finalAlive = append(finalAlive, cell{x: x, y: y})
+				}
 			}
 		}
-	}
 
+		printPGM(world, d, p)
+		// Make sure that the Io has finished any output before exiting.
+		d.io.command <- ioCheckIdle
+		<-d.io.idle
+
+		// Return the coordinates of cells that are still alive.
+		alive <- finalAlive
+	}
+}
+
+func printPGM(world [][]byte, d distributorChans, p golParams) {
 	d.io.command <- ioOutput
 	d.io.filename <- "filename"
 	for y := 0; y < p.imageHeight; y++ {
@@ -195,11 +225,4 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			d.io.outputVal <- world[y][x]
 		}
 	}
-
-	// Make sure that the Io has finished any output before exiting.
-	d.io.command <- ioCheckIdle
-	<-d.io.idle
-
-	// Return the coordinates of cells that are still alive.
-	alive <- finalAlive
 }
