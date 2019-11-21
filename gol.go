@@ -160,7 +160,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				printPGM(world, d, p)
 			}
 			if ch == 'p' {
-				paused = !paused
+				if paused == true {
+					paused = false
+				} else {
+					paused = true
+				}
 			}
 		default:
 			fmt.Println("key wasn't pressed")
@@ -189,32 +193,26 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				go update(world, chans[i], &wg)
 			}
 			wg.Wait()
-			//select {
-			//case s:
-			//case p:
-			//case q:
-
-			//}
 		}
-		// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
-		var finalAlive []cell
-		// Go through the world and append the cells that are still alive.
-		for y := 0; y < p.imageHeight; y++ {
-			for x := 0; x < p.imageWidth; x++ {
-				if world[y][x] != 0 {
-					finalAlive = append(finalAlive, cell{x: x, y: y})
-				}
+	}
+	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
+	var finalAlive []cell
+	// Go through the world and append the cells that are still alive.
+	for y := 0; y < p.imageHeight; y++ {
+		for x := 0; x < p.imageWidth; x++ {
+			if world[y][x] != 0 {
+				finalAlive = append(finalAlive, cell{x: x, y: y})
 			}
 		}
-
-		printPGM(world, d, p)
-		// Make sure that the Io has finished any output before exiting.
-		d.io.command <- ioCheckIdle
-		<-d.io.idle
-
-		// Return the coordinates of cells that are still alive.
-		alive <- finalAlive
 	}
+
+	printPGM(world, d, p)
+	// Make sure that the Io has finished any output before exiting.
+	d.io.command <- ioCheckIdle
+	<-d.io.idle
+
+	// Return the coordinates of cells that are still alive.
+	alive <- finalAlive
 }
 
 func printPGM(world [][]byte, d distributorChans, p golParams) {
