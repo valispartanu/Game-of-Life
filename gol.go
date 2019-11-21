@@ -22,14 +22,11 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 		if ok == false {
 			break
 		} else {
-			fmt.Println(c.y, " ", c.x)
 			world[c.y][c.x] = 255
 		}
 	}
 	line1 := (p.imageHeight / p.threads) * thread
-	//fmt.Println("line1", line1)
 	line2 := (p.imageHeight / p.threads) * (thread + 1)
-	//fmt.Println("line2", line2)
 
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
@@ -69,8 +66,6 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			}
 		}
 	}
-	//update(world, changes)
-	//time.Sleep(2 * time.Second)
 	close(changes)
 }
 func update(world [][]byte, output chan cell, wg *sync.WaitGroup) {
@@ -129,13 +124,11 @@ func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golPar
 			}
 		}
 	}
-	fmt.Println("channel closed")
-
 	close(output)
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p golParams, d distributorChans, alive chan []cell) {
+func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan rune) {
 
 	// Create the 2D slice to store the world.
 	world := allocateSlice(p)
@@ -153,22 +146,20 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			}
 		}
 	}
-
-	for turns := 0; turns < p.turns; turns++ {
+	var running := true
+	for turns := 0; turns < p.turns && running; turns++ {
 		// The io goroutine sends the requested image byte by byte, in rows.
-		//changes := make(chan cell)
 
 		chans := make([]chan cell, p.threads)
 		for i := 0; i < p.threads; i++ {
-			chans[i] = make(chan cell, 1000)
+			chans[i] = make(chan cell, 10)
 		}
 
 		for i := 0; i < p.threads; i++ {
 
 			line1 := (p.imageHeight / p.threads) * i
 			line2 := (p.imageHeight / p.threads) * (i + 1)
-			input := make(chan cell, 1000)
-			fmt.Println("starting worker")
+			input := make(chan cell, 10)
 			go worker(p, input, chans[i], i)
 			sendData(input, world, line1, line2, p)
 		}
@@ -179,7 +170,12 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			go update(world, chans[i], &wg)
 		}
 		wg.Wait()
-		//time.Sleep(7*time.Second)
+		//select {
+		//case s:
+		//case p:
+		//case q:
+			
+		//}
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell

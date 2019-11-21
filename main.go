@@ -91,7 +91,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 
 	aliveCells := make(chan []cell)
 
-	go distributor(p, dChans, aliveCells)
+	go distributor(p, dChans, aliveCells, keyChan)
 	go pgmIo(p, ioChans)
 
 	alive := <-aliveCells
@@ -102,7 +102,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 // Do not edit until Stage 2.
 func main() {
 	var params golParams
-
+	k := make(chan rune)
 	StopControlServer()
 
 	flag.IntVar(
@@ -129,8 +129,7 @@ func main() {
 
 	startControlServer(params)
 	startControlServer(params)
-	go getKeyboardCommand(nil)
-	gameOfLife(params, nil)
-	gameOfLife(params, nil)
+	go getKeyboardCommand(k)
+	gameOfLife(params, k)
 	StopControlServer()
 }
