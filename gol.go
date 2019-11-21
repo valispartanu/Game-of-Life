@@ -147,7 +147,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		}
 	}
 	var running := true
-	for turns := 0; turns < p.turns && running; turns++ {
+	for turns := 0; turns < p.turns && running==true; turns++ {
 		// The io goroutine sends the requested image byte by byte, in rows.
 
 		chans := make([]chan cell, p.threads)
