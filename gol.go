@@ -160,17 +160,17 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 		chans := make([]chan cell, p.threads)
 		for i := 0; i < p.threads; i++ {
-			chans[i] = make(chan cell, 100)
+			chans[i] = make(chan cell, 1000)
 		}
 
 		for i := 0; i < p.threads; i++ {
 
 			line1 := (p.imageHeight / p.threads) * i
 			line2 := (p.imageHeight / p.threads) * (i + 1)
-			input := make(chan cell, 100)
-			sendData(input, world, line1, line2, p)
+			input := make(chan cell, 1000)
 			fmt.Println("starting worker")
 			go worker(p, input, chans[i], i)
+			sendData(input, world, line1, line2, p)
 		}
 
 		var wg sync.WaitGroup
