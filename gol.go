@@ -88,7 +88,6 @@ func update(world [][]byte, output chan cell, wg *sync.WaitGroup, alive chan int
 	}
 	alive <- ch
 	wg.Done()
-
 }
 
 func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golParams) {
@@ -122,7 +121,6 @@ func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golPar
 			}
 		}
 	} else {
-
 		for j := 0; j < p.imageWidth; j++ {
 			if world[line2][j] != 0 {
 				output <- cell{j, line2}
@@ -157,13 +155,10 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	var paused = false
 
 	ticker := time.NewTicker(2 * time.Second)
-	done := make(chan bool)
 
 	go func() {
 		for {
 			select {
-			case <-done:
-				return
 			case <-ticker.C:
 				if running == true && paused == false {
 					fmt.Println(aliveNo)
@@ -245,7 +240,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 
 func printPGM(world [][]byte, d distributorChans, p golParams) {
 	d.io.command <- ioOutput
-	d.io.filename <- "filename"
+	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
 			d.io.outputVal <- world[y][x]
