@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func allocateSlice(p golParams) [][]byte {
@@ -56,20 +57,21 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			if world[y][x] != 0 {
 				if nb < 2 || nb > 3 {
 					changes <- cell{x, y}
-					fmt.Println("cell", x, y, "is dead now.")
+					//fmt.Println("cell", x, y, "is dead now.")
 				}
 			} else {
 				if nb == 3 {
 					changes <- cell{x, y}
-					fmt.Println("cell", x, y, "is alive now.")
+					//fmt.Println("cell", x, y, "is alive now.")
 				}
 			}
 		}
 	}
 	close(changes)
 }
-func update(world [][]byte, output chan cell, wg *sync.WaitGroup) {
+func update(world [][]byte, output chan cell, wg *sync.WaitGroup, alive chan int) {
 
+	var ch = 0
 	for {
 		c, ok := <-output
 		if ok == false {
@@ -77,11 +79,14 @@ func update(world [][]byte, output chan cell, wg *sync.WaitGroup) {
 		} else {
 			if world[c.y][c.x] != 0 {
 				world[c.y][c.x] = 0
+				ch--
 			} else {
 				world[c.y][c.x] = 255
+				ch++
 			}
 		}
 	}
+	alive <- ch
 	wg.Done()
 
 }
@@ -136,21 +141,40 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	d.io.command <- ioInput
 	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
 
+	var aliveNo = 0
+
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
 			val := <-d.io.inputVal
 			if val != 0 {
 				fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
+				aliveNo++
 			}
 		}
 	}
 	var running = true
 	var paused = false
+
+	ticker := time.NewTicker(2 * time.Second)
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if running == true && paused == false {
+					fmt.Println(aliveNo)
+				}
+			}
+		}
+	}()
+
 	for turns := 0; turns < p.turns && running == true; turns++ {
 		// The io goroutine sends the requested image byte by byte, in rows.
 
-		fmt.Println("entering select")
 		select {
 		case ch := <-k:
 			if ch == 'q' {
@@ -167,7 +191,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				}
 			}
 		default:
-			fmt.Println("key wasn't pressed")
 		}
 
 		if paused == true {
@@ -187,12 +210,17 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				sendData(input, world, line1, line2, p)
 			}
 
+			al := make(chan int, p.threads)
 			var wg sync.WaitGroup
 			for i := 0; i < p.threads; i++ {
 				wg.Add(1)
-				go update(world, chans[i], &wg)
+				go update(world, chans[i], &wg, al)
 			}
 			wg.Wait()
+
+			for i := 0; i < p.threads; i++ {
+				aliveNo += <-al
+			}
 		}
 	}
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
