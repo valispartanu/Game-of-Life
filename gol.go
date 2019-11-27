@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 func allocateSlice(p golParams) [][]byte {
@@ -15,119 +14,75 @@ func allocateSlice(p golParams) [][]byte {
 	}
 	return world
 }
-func worker(p golParams, input chan cell, changes chan cell, thread int) {
-
-	world := allocateSlice(p)
-	for {
-		c, ok := <-input
-		if ok == false {
-			break
-		} else {
-			world[c.y][c.x] = 255
-		}
-	}
-	line1 := (p.imageHeight / p.threads) * thread
-	line2 := (p.imageHeight / p.threads) * (thread + 1)
+func worker(p golParams, world [][]byte, swg *sync.WaitGroup, line1 int, line2 int, masterWG *sync.WaitGroup) {
 
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
-	for y := line1; y < line2; y++ {
-		for x := 0; x < p.imageWidth; x++ {
-			nb := 0
-			for i := 0; i < 8; i++ {
-				c := x + dx[i]
-				l := y + dy[i]
-				if c == -1 {
-					c = p.imageWidth - 1
+
+	fmt.Println(line1, line2)
+
+	for turns := 0; turns < p.turns; turns++ {
+		//swg.Add(1)
+		//fmt.Println(next)
+		changes := []cell{}
+		for y := line1; y < line2; y++ {
+			for x := 0; x < p.imageWidth; x++ {
+
+				nb := 0
+				for i := 0; i < 8; i++ {
+					c := x + dx[i]
+					l := y + dy[i]
+					if c == -1 {
+						c = p.imageWidth - 1
+					}
+					if l == -1 {
+						l = p.imageHeight - 1
+					}
+					if c == p.imageWidth {
+						c = 0
+					}
+					if l == p.imageHeight {
+						l = 0
+					}
+					if world[l][c] != 0 {
+						nb++
+					}
+
 				}
-				if l == -1 {
-					l = p.imageHeight - 1
-				}
-				if c == p.imageWidth {
-					c = 0
-				}
-				if l == p.imageHeight {
-					l = 0
-				}
-				if world[l][c] != 0 {
-					nb++
+
+				if world[y][x] != 0 {
+					if nb < 2 || nb > 3 {
+						changes = append(changes, cell{x, y})
+						fmt.Println("cell", x, y, "is dead now.")
+					}
+				} else {
+					if nb == 3 {
+						changes = append(changes, cell{x, y})
+						fmt.Println("cell", x, y, "is alive now.")
+					}
 				}
 			}
+		}
+		//fmt.Println(line1, line2, myGroup, next, prev)
+		//myGroup.Done()
 
-			if world[y][x] != 0 {
-				if nb < 2 || nb > 3 {
-					changes <- cell{x, y}
-					//fmt.Println("cell", x, y, "is dead now.")
-				}
+		//next.Wait()
+		//prev.Wait()
+		swg.Done()
+		fmt.Println(line1, "finished", swg)
+		swg.Wait()
+		fmt.Println(line1, "entering update now")
+		for _, change := range changes {
+			if world[change.y][change.x] != 0 {
+				world[change.y][change.x] = 0
 			} else {
-				if nb == 3 {
-					changes <- cell{x, y}
-					//fmt.Println("cell", x, y, "is alive now.")
-				}
+				world[change.y][change.x] = 255
 			}
 		}
+		swg.Add(1)
+		//myGroup.Add(1)
 	}
-	close(changes)
-}
-func update(world [][]byte, output chan cell, wg *sync.WaitGroup, alive chan int) {
-
-	var ch = 0
-	for {
-		c, ok := <-output
-		if ok == false {
-			break
-		} else {
-			if world[c.y][c.x] != 0 {
-				world[c.y][c.x] = 0
-				ch--
-			} else {
-				world[c.y][c.x] = 255
-				ch++
-			}
-		}
-	}
-	alive <- ch
-	wg.Done()
-}
-
-func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golParams) {
-
-	for i := line1; i < line2; i++ {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[i][j] != 0 {
-				c := cell{j, i}
-				output <- c
-			}
-		}
-	}
-	if line1 == 0 {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[p.imageHeight-1][j] != 0 {
-				output <- cell{j, p.imageHeight - 1}
-			}
-		}
-	} else {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[line1-1][j] != 0 {
-				output <- cell{j, line1 - 1}
-			}
-		}
-	}
-
-	if line2 == p.imageHeight {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[0][j] != 0 {
-				output <- cell{j, 0}
-			}
-		}
-	} else {
-		for j := 0; j < p.imageWidth; j++ {
-			if world[line2][j] != 0 {
-				output <- cell{j, line2}
-			}
-		}
-	}
-	close(output)
+	masterWG.Done()
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -139,7 +94,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	d.io.command <- ioInput
 	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
 
-	var aliveNo = 0
+	//var aliveNo = 0
 
 	for y := 0; y < p.imageHeight; y++ {
 		for x := 0; x < p.imageWidth; x++ {
@@ -147,77 +102,34 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			if val != 0 {
 				fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
-				aliveNo++
 			}
 		}
 	}
-	var running = true
-	var paused = false
 
-	ticker := time.NewTicker(2 * time.Second)
+	//	workerGroup := make([]sync.WaitGroup, p.threads)
 
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				if running == true && paused == false {
-					fmt.Println(aliveNo)
-				}
-			}
-		}
-	}()
+	var wg sync.WaitGroup
+	var swg sync.WaitGroup
+	wg.Add(p.threads)
+	swg.Add(p.threads)
+	//workerGroup[0].Add(1)
+	//go worker(p, world, &workerGroup[p.threads-1], &workerGroup[0], &workerGroup[1], 0, (p.imageHeight / p.threads), &wg)
 
-	for turns := 0; turns < p.turns && running == true; turns++ {
-		// The io goroutine sends the requested image byte by byte, in rows.
+	for i := 0; i < p.threads; i++ {
 
-		select {
-		case ch := <-k:
-			if ch == 'q' {
-				running = false
-			}
-			if ch == 's' {
-				printPGM(world, d, p)
-			}
-			if ch == 'p' {
-				if paused == true {
-					paused = false
-				} else {
-					paused = true
-				}
-			}
-		default:
-		}
+		line1 := (p.imageHeight / p.threads) * i
+		line2 := (p.imageHeight / p.threads) * (i + 1)
+		//workerGroup[i].Add(1)
+		go worker(p, world, &swg, line1, line2, &wg)
 
-		if paused == true {
-			turns--
-		} else {
-			chans := make([]chan cell, p.threads)
-			for i := 0; i < p.threads; i++ {
-				chans[i] = make(chan cell, 10)
-			}
-
-			for i := 0; i < p.threads; i++ {
-
-				line1 := (p.imageHeight / p.threads) * i
-				line2 := (p.imageHeight / p.threads) * (i + 1)
-				input := make(chan cell, 10)
-				go worker(p, input, chans[i], i)
-				sendData(input, world, line1, line2, p)
-			}
-
-			al := make(chan int, p.threads)
-			var wg sync.WaitGroup
-			for i := 0; i < p.threads; i++ {
-				wg.Add(1)
-				go update(world, chans[i], &wg, al)
-			}
-			wg.Wait()
-
-			for i := 0; i < p.threads; i++ {
-				aliveNo += <-al
-			}
-		}
 	}
+
+	/*	if p.threads > 1 {
+		workerGroup[p.threads-1].Add(1)
+		go worker(p, world, &workerGroup[p.threads-2], &workerGroup[p.threads-1], &workerGroup[0], (p.imageHeight/p.threads)*(p.threads-1), p.imageHeight, &wg)
+	} */
+
+	wg.Wait()
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
 	// Go through the world and append the cells that are still alive.
@@ -228,6 +140,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			}
 		}
 	}
+	fmt.Println(finalAlive)
 
 	printPGM(world, d, p)
 	// Make sure that the Io has finished any output before exiting.
