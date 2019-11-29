@@ -29,6 +29,9 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 
 	line1 := (p.imageHeight / p.threads) * thread
 	line2 := (p.imageHeight / p.threads) * (thread + 1)
+	if thread == p.threads-1 {
+		line2 = p.imageHeight
+	}
 	fmt.Println("Thread", thread, "has lines", line1, line2)
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
