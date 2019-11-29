@@ -35,11 +35,12 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
 
+	var wgdata sync.WaitGroup
+
 	for turn := 0; turn < p.turns; turn++ {
 
+		wgdata.Add(2)
 		fmt.Println("Entered for loop")
-		go sendData(above, world, line1, line1+1, p)
-		go sendData(below, world, line2-1, line2, p)
 
 		//make future halos dead
 		if line1 == 0 {
@@ -61,7 +62,10 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 				world[line2][j] = 0
 			}
 		}
-
+		//fmt.Println("Thread", thread, "waiting to send the halos")
+		go sendData(above, world, line1+1, line1, p, &wgdata)
+		go sendData(below, world, line2, line2-1, p, &wgdata)
+		wgdata.Wait()
 		c = <-input
 		for c.x != -73 {
 			world[c.y][c.x] = 255
@@ -127,7 +131,9 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 	}
 	WG.Done()
 	fmt.Println("Thread", thread, "has finished")
-	sendData(final, world, line1+1, line2-1, p)
+	wgdata.Add(1)
+	go sendData(final, world, line1+1, line2-1, p, &wgdata)
+	wgdata.Wait()
 	fmt.Println("Thread", thread, "has finished sendind data")
 }
 func update(world [][]byte, output chan cell) {
@@ -140,7 +146,7 @@ func update(world [][]byte, output chan cell) {
 	}
 }
 
-func sendData(output chan cell, world [][]byte, line1 int, line2 int, p golParams) {
+func sendData(output chan cell, world [][]byte, line1 int, line2 int, p golParams, wg *sync.WaitGroup) {
 
 	for i := line1; i < line2; i++ {
 		for j := 0; j < p.imageWidth; j++ {
@@ -183,6 +189,7 @@ func sendData(output chan cell, world [][]byte, line1 int, line2 int, p golParam
 		}
 	}
 	output <- cell{-73, -73}
+	wg.Done()
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -232,14 +239,16 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	var wg sync.WaitGroup
 	var wg2 sync.WaitGroup
 	//var wg3 sync.WaitGroup
+	var wgdata sync.WaitGroup
 
 	wg2.Add(p.threads)
+	wgdata.Add(p.threads)
 	line1 := (p.imageHeight / p.threads) * 0
 	line2 := (p.imageHeight / p.threads) * (0 + 1)
 	final := make(chan cell, 10)
 	//first worker
 	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone)
-	sendData(chans[0], world, line1, line2, p)
+	sendData(chans[0], world, line1, line2, p, &wgdata)
 	//middle workers
 	for i := 1; i < p.threads-1; i++ {
 
@@ -247,7 +256,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		line2 := (p.imageHeight / p.threads) * (i + 1)
 		//input := make(chan cell, 10)
 		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone)
-		sendData(chans[i], world, line1, line2, p)
+		sendData(chans[i], world, line1, line2, p, &wgdata)
 	}
 
 	//last worker
@@ -256,8 +265,10 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		line1 := (p.imageHeight / p.threads) * (p.threads - 1)
 		line2 := p.imageHeight
 		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone)
-		sendData(chans[p.threads-1], world, line1, line2, p)
+		sendData(chans[p.threads-1], world, line1, line2, p, &wgdata)
 	}
+
+	wgdata.Wait()
 
 	for turn := 0; turn < p.turns; turn++ {
 		wg.Add(p.threads)
