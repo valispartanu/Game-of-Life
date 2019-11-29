@@ -28,7 +28,9 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 	}
 	line1 := (p.imageHeight / p.threads) * thread
 	line2 := (p.imageHeight / p.threads) * (thread + 1)
-
+	if thread == p.threads-1 {
+		line2 = p.imageHeight
+	}
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
 	for y := line1; y < line2; y++ {
@@ -200,6 +202,9 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 
 				line1 := (p.imageHeight / p.threads) * i
 				line2 := (p.imageHeight / p.threads) * (i + 1)
+				if i == p.threads-1 {
+					line2 = p.imageHeight
+				}
 				input := make(chan cell, 10)
 				go worker(p, input, chans[i], i)
 				sendData(input, world, line1, line2, p)

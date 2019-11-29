@@ -103,7 +103,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 func main() {
 	var params golParams
 	k := make(chan rune)
-	// StopControlServer()
+	//StopControlServer()
 
 	flag.IntVar(
 		&params.threads,
