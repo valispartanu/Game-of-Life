@@ -16,8 +16,10 @@ func allocateSlice(p golParams) [][]byte {
 	return world
 }
 func worker(p golParams, input chan cell, changes chan cell, thread int) {
-
+	//allocate empty world to the worker
 	world := allocateSlice(p)
+
+	//receive the initial configuration of the worker's part of world
 	for {
 		c, ok := <-input
 		if ok == false {
@@ -26,11 +28,17 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			world[c.y][c.x] = 255
 		}
 	}
+
+	//define bounds for each worker
 	line1 := (p.imageHeight / p.threads) * thread
 	line2 := (p.imageHeight / p.threads) * (thread + 1)
+
+	//check for 6,10,12 threads
 	if thread == p.threads-1 {
 		line2 = p.imageHeight
 	}
+
+	//game logic
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
 	for y := line1; y < line2; y++ {
@@ -71,6 +79,8 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 	}
 	close(changes)
 }
+
+//flips dead to alive and alive to dead depending on what coordinates it gets from changes
 func update(world [][]byte, output chan cell, wg *sync.WaitGroup, alive chan int) {
 
 	var ch = 0
@@ -89,9 +99,11 @@ func update(world [][]byte, output chan cell, wg *sync.WaitGroup, alive chan int
 		}
 	}
 	alive <- ch
+	//decreasing the WaitGroup counter by 1 for each update
 	wg.Done()
 }
 
+//send coordinates of alive cells to the worker (output->input)
 func sendData(output chan<- cell, world [][]byte, line1 int, line2 int, p golParams) {
 
 	for i := line1; i < line2; i++ {
@@ -156,8 +168,10 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	var running = true
 	var paused = false
 
+	//creating a 2 second ticker
 	ticker := time.NewTicker(2 * time.Second)
 
+	//printing the number of alive cells every 2 seconds (when receiving from the ticker channel)
 	go func() {
 		for {
 			select {
@@ -170,8 +184,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	}()
 
 	for turns := 0; turns < p.turns && running == true; turns++ {
-		// The io goroutine sends the requested image byte by byte, in rows.
 
+		//selecting between commands in make gol using the key channel, k
 		select {
 		case ch := <-k:
 			if ch == 'q' {
@@ -199,9 +213,10 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			}
 
 			for i := 0; i < p.threads; i++ {
-
 				line1 := (p.imageHeight / p.threads) * i
 				line2 := (p.imageHeight / p.threads) * (i + 1)
+
+				//check for 6,10,12 threads
 				if i == p.threads-1 {
 					line2 = p.imageHeight
 				}
@@ -209,15 +224,18 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				go worker(p, input, chans[i], i)
 				sendData(input, world, line1, line2, p)
 			}
-
+			//creating a channel to send the number of alive cells
 			al := make(chan int, p.threads)
 			var wg sync.WaitGroup
 			for i := 0; i < p.threads; i++ {
+				//adding 1 to the WaitGroup counter for each worker update in this turn
 				wg.Add(1)
 				go update(world, chans[i], &wg, al)
 			}
+			//verifying that all updates are done for this turn
 			wg.Wait()
 
+			//updating the number of alive cells each turn
 			for i := 0; i < p.threads; i++ {
 				aliveNo += <-al
 			}
