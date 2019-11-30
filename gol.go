@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func allocateSlice(p golParams) [][]byte {
@@ -16,16 +17,17 @@ func allocateSlice(p golParams) [][]byte {
 }
 
 //aboveS = above Send, R is for receive
-func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool) {
+func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool, isdone chan bool, alive chan int) {
 	//allocate empty world to worker
 	world := allocateSlice(p)
-	fmt.Println("Thread", thread, "has started")
-
+	//fmt.Println("Thread", thread, "has started")
+	var ch = 0
 	//receiving the initial configuration of his part
 	c := <-input
 	for c.x != -73 {
 		world[c.y][c.x] = 255
-		fmt.Println("Thread", thread, ": alive cell received at", c.x, c.y)
+		//ch++
+		//fmt.Println("Thread", thread, ": alive cell received at", c.x, c.y)
 		c = <-input
 	}
 
@@ -37,14 +39,14 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 	if thread == p.threads-1 {
 		line2 = p.imageHeight
 	}
-	fmt.Println("Thread", thread, "has lines", line1, line2)
+	//fmt.Println("Thread", thread, "has lines", line1, line2)
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
 
 	for turn := 0; turn < p.turns; turn++ {
 
 		//wg.Add(1)
-		fmt.Println("Thread", thread, "entered for loop")
+		//fmt.Println("Thread", thread, "entered for loop")
 
 		//make future halos empty
 		if line1 == 0 {
@@ -118,42 +120,46 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 				if world[y][x] != 0 {
 					if nb < 2 || nb > 3 {
 						changes = append(changes, cell{x, y})
-						fmt.Println("cell", x, y, "is dead now. (Thread ", thread, ")")
+						//fmt.Println("cell", x, y, "is dead now. (Thread ", thread, ")")
 					}
 				} else {
 					if nb == 3 {
 						changes = append(changes, cell{x, y})
-						fmt.Println("cell", x, y, "is alive now. (Thread ", thread, ")")
+						//fmt.Println("cell", x, y, "is alive now. (Thread ", thread, ")")
 					}
 				}
 			}
 		}
-		fmt.Println("Thread", thread, "finished work. Here are the changes:", changes)
+		//fmt.Println("Thread", thread, "finished work. Here are the changes:", changes)
 
 		//update
 		for _, change := range changes {
 			if world[change.y][change.x] != 0 {
 				world[change.y][change.x] = 0
-				fmt.Println("Thread ", thread, ": cell", change.x, change.y, "is dead now")
+				ch--
+				//fmt.Println("Thread ", thread, ": cell", change.x, change.y, "is dead now")
 			} else {
 				world[change.y][change.x] = 255
-				fmt.Println("Thread ", thread, ": cell", change.x, change.y, "is alive now")
+				ch++
+				//fmt.Println("Thread ", thread, ": cell", change.x, change.y, "is alive now")
 			}
 		}
 		//decrease WaitGroup counter by 1 (notifying the distributor that the work is done for this turn)
+		alive <- ch
 		wg.Done()
-		fmt.Println("Thread", thread, "finished updating")
+		//fmt.Println("Thread", thread, "finished updating")
+		isdone <- true
 		//waits signal from distributor that the rest of workers finished their work
 		<-turnDone
 
 	}
 	//decease Master WaitGroup counter by 1 (notifying the distributor that the work is done for all turns)
 	WG.Done()
-	fmt.Println("Thread", thread, "has finished")
+	//fmt.Println("Thread", thread, "has finished")
 
 	//send updated part to distributor
 	sendData(final, world, line1+1, line2-1, p)
-	fmt.Println("Thread", thread, "has finished sendind data")
+	//fmt.Println("Thread", thread, "has finished sendind data")
 }
 func update(world [][]byte, output chan cell) {
 
@@ -230,8 +236,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 			}
 		}
 	}
-	fmt.Println(p.threads)
-	/*var running = true
+	//fmt.Println(p.threads)
+	var running = true
 	var paused = false
 
 	ticker := time.NewTicker(2 * time.Second)
@@ -245,13 +251,17 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 				}
 			}
 		}
-	}()  */
+	}()
 
 	chans := make([]chan cell, p.threads)
 	for i := 0; i < p.threads; i++ {
 		chans[i] = make(chan cell, 10)
 	}
-	turnDone := make(chan bool)
+	turnDone := make([]chan bool, p.threads)
+	for i := 0; i < p.threads; i++ {
+		turnDone[i] = make(chan bool, 10)
+	}
+	isDone := make(chan bool, 16)
 
 	var wg sync.WaitGroup
 	var wg2 sync.WaitGroup
@@ -259,11 +269,12 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	wg.Add(p.threads)
 	wg2.Add(p.threads)
 	final := make(chan cell, 10)
-
+	//creating a channel to send the number of alive cells
+	al := make(chan int, p.threads)
 	//first worker
 	line1 := (p.imageHeight / p.threads) * 0
 	line2 := (p.imageHeight / p.threads) * (0 + 1)
-	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone)
+	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone[0], isDone, al)
 	sendData(chans[0], world, line1, line2, p)
 
 	//middle workers
@@ -271,7 +282,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		line1 := (p.imageHeight / p.threads) * i
 		line2 := (p.imageHeight / p.threads) * (i + 1)
 		//input := make(chan cell, 10)
-		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone)
+		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone[i], isDone, al)
 		sendData(chans[i], world, line1, line2, p)
 	}
 
@@ -279,16 +290,45 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	if p.threads > 1 {
 		line1 := (p.imageHeight / p.threads) * (p.threads - 1)
 		line2 := p.imageHeight
-		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone)
+		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone[p.threads-1], isDone, al)
 		sendData(chans[p.threads-1], world, line1, line2, p)
 	}
 
 	for turn := 0; turn < p.turns; turn++ {
-		wg.Wait()
-		wg.Add(p.threads)
-		fmt.Println("all threads have finished turn", turn)
-		for i := 0; i < p.threads; i++ {
-			turnDone <- true
+		select {
+		case ch := <-k:
+			if ch == 'q' {
+				fmt.Println("Quitting")
+				running = false
+			}
+			if ch == 's' {
+				printPGM(world, d, p)
+			}
+			if ch == 'p' {
+				if paused == true {
+					fmt.Println("Continuing")
+					paused = false
+				} else {
+					paused = true
+				}
+			}
+		default:
+		}
+
+		if paused == true {
+			turn--
+		} else {
+			//wg.Wait()
+			for i := 0; i < p.threads; i++ {
+				<-isDone
+			}
+			wg.Add(p.threads)
+			//fmt.Println("all threads have finished turn", turn)
+
+			for i := 0; i < p.threads; i++ {
+				turnDone[i] <- true
+				aliveNo += <-al
+			}
 		}
 	}
 	wg2.Wait()
