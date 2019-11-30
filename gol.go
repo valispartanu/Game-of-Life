@@ -16,7 +16,7 @@ func allocateSlice(p golParams) [][]byte {
 }
 
 //aboveS = above Send, R is for receive
-func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool) {
+func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool, isdone chan bool) {
 
 	world := allocateSlice(p)
 	fmt.Println("Thread", thread, "has started")
@@ -132,9 +132,10 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 			}
 		}
 		wg.Done()
+		isdone <- true
 		fmt.Println("Thread", thread, "finished updating")
 		<-turnDone
-
+		fmt.Println("Thread", thread, "pursuing next turn")
 	}
 	WG.Done()
 	fmt.Println("Thread", thread, "has finished")
@@ -239,7 +240,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	for i := 0; i < p.threads; i++ {
 		chans[i] = make(chan cell, 10)
 	}
-	turnDone := make(chan bool)
+	turnDone := make([]chan bool, p.threads)
+	for i := 0; i < p.threads; i++ {
+		turnDone[i] = make(chan bool, 10)
+	}
+	isDone := make(chan bool, 16)
 
 	var wg sync.WaitGroup
 	var wg2 sync.WaitGroup
@@ -250,7 +255,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	line2 := (p.imageHeight / p.threads) * (0 + 1)
 	final := make(chan cell, 10)
 	//first worker
-	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone)
+	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone[0], isDone)
 	sendData(chans[0], world, line1, line2, p)
 	//middle workers
 	for i := 1; i < p.threads-1; i++ {
@@ -258,7 +263,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		line1 := (p.imageHeight / p.threads) * i
 		line2 := (p.imageHeight / p.threads) * (i + 1)
 		//input := make(chan cell, 10)
-		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone)
+		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone[i], isDone)
 		sendData(chans[i], world, line1, line2, p)
 	}
 
@@ -267,17 +272,21 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 
 		line1 := (p.imageHeight / p.threads) * (p.threads - 1)
 		line2 := p.imageHeight
-		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone)
+		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone[p.threads-1], isDone)
 		sendData(chans[p.threads-1], world, line1, line2, p)
 	}
 
 	for turn := 0; turn < p.turns; turn++ {
-		wg.Wait()
-		wg.Add(p.threads)
-		fmt.Println("all threads have finished za turn", turn)
+
 		for i := 0; i < p.threads; i++ {
-			turnDone <- true
+			<-isDone
 		}
+		wg.Add(p.threads)
+		for i := 0; i < p.threads; i++ {
+			turnDone[i] <- true
+			fmt.Println("Notified", i, "-th  thread")
+		}
+		fmt.Println("all threads have finished za turn", turn)
 	}
 	wg2.Wait()
 	world = allocateSlice(p)
