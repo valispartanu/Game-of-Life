@@ -17,7 +17,7 @@ func allocateSlice(p golParams) [][]byte {
 }
 
 //aboveS = above Send, R is for receive
-func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool, isdone chan bool, alive chan int, quit chan bool, pause chan bool, state chan bool) {
+func worker(p golParams, input chan cell, thread int, above chan cell, below chan cell, wg *sync.WaitGroup, WG *sync.WaitGroup, final chan cell, turnDone chan bool, isdone chan bool, alive chan int, quit chan bool, state chan bool) {
 
 	running := true
 	//allocate empty world to worker
@@ -134,7 +134,6 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 					}
 				}
 			}
-			//fmt.Println("Thread", thread, "finished work. Here are the changes:")
 			ch = 0
 			//update
 			for _, change := range changes {
@@ -150,23 +149,22 @@ func worker(p golParams, input chan cell, thread int, above chan cell, below cha
 			}
 			//decrease WaitGroup counter by 1 (notifying the distributor that the work is done for this turn)
 			alive <- ch
-			wg.Done()
-			//fmt.Println("Thread", thread, "finished updating")
 			isdone <- true
 			//waits signal from distributor that the rest of workers finished their work
 			<-turnDone
 		}
 		select {
-		case <-state:
-			fmt.Println("Threadul", thread, "a primit comanda s si acum trimite datele")
-			sendData(final, world, line1+1, line2-1, p)
-		case <-pause:
-			<-pause
-
 		case <-quit:
 			turn = p.turns + 1
 			running = false
 			fmt.Println("Threadul", thread, "a trimis ca e gata")
+		default:
+		}
+		select {
+		case <-state:
+			fmt.Println("Threadul", thread, "a primit comanda s si acum trimite datele")
+			//wg.Done()
+			go sendData(final, world, line1+1, line2-1, p)
 		default:
 		}
 
@@ -288,7 +286,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	wg.Add(p.threads)
 	wg2.Add(p.threads)
 	final := make(chan cell, 10)
-	pause := make(chan bool)
 	quit := make([]chan bool, p.threads)
 	for i := 0; i < p.threads; i++ {
 		quit[i] = make(chan bool, 2)
@@ -302,7 +299,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	//first worker
 	line1 := (p.imageHeight / p.threads) * 0
 	line2 := (p.imageHeight / p.threads) * (0 + 1)
-	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone[0], isDone, al, quit[0], pause, state[0])
+	go worker(p, chans[0], 0, chans[p.threads-1], chans[1], &wg, &wg2, final, turnDone[0], isDone, al, quit[0], state[0])
 	sendData(chans[0], world, line1, line2, p)
 
 	//middle workers
@@ -310,7 +307,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		line1 := (p.imageHeight / p.threads) * i
 		line2 := (p.imageHeight / p.threads) * (i + 1)
 		//input := make(chan cell, 10)
-		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone[i], isDone, al, quit[i], pause, state[i])
+		go worker(p, chans[i], i, chans[i-1], chans[i+1], &wg, &wg2, final, turnDone[i], isDone, al, quit[i], state[i])
 		sendData(chans[i], world, line1, line2, p)
 	}
 
@@ -318,85 +315,86 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	if p.threads > 1 {
 		line1 := (p.imageHeight / p.threads) * (p.threads - 1)
 		line2 := p.imageHeight
-		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone[p.threads-1], isDone, al, quit[p.threads-1], pause, state[p.threads-1])
+		go worker(p, chans[p.threads-1], p.threads-1, chans[p.threads-2], chans[0], &wg, &wg2, final, turnDone[p.threads-1], isDone, al, quit[p.threads-1], state[p.threads-1])
 		sendData(chans[p.threads-1], world, line1, line2, p)
 	}
+
+	spressed := false
 
 	for turn := 0; turn < p.turns; turn++ {
 
 		if paused == true && running == true {
 			turn--
-		} else {
-			//wg.Wait()
-			for i := 0; i < p.threads; i++ {
-				<-isDone
-			}
-			select {
-			case ch := <-k:
-				if ch == 'q' && running == true {
+		}
 
-					running = false
-					fmt.Println("Quitting")
-					for i := 0; i < p.threads; i++ {
-						quit[i] <- true
-						fmt.Println("quit sent to thread", i)
-					}
-					fmt.Println("1")
-					turn = p.turns + 1
-					for i := 0; i < p.threads; i++ {
-						//<-isDone
-						aliveNo += <-al
-					}
-					fmt.Println("2")
-					for i := 0; i < p.threads; i++ {
-						turnDone[i] <- true
-					}
-					fmt.Println("3")
-				}
-				if ch == 's' {
+		//wg.Wait()
+		for i := 0; i < p.threads; i++ {
+			<-isDone
+		}
+		select {
+		case ch := <-k:
+			if ch == 'q' && running == true {
 
-					fmt.Println("s pressed")
-					for i := 0; i < p.threads; i++ {
-						state[i] <- true
-						fmt.Println("s command sent to thread", i)
-					}
-
-					world = allocateSlice(p)
-					for i := 0; i < p.threads; i++ {
-						update(world, final)
-					}
-					printPGM(world, d, p)
-				}
-				if ch == 'p' {
-					if paused == true {
-						fmt.Println("Continuing")
-						paused = false
-					} else {
-						paused = true
-					}
-				}
-			default:
-			}
-
-			if running == true {
-				wg.Add(p.threads)
-				//fmt.Println("all threads have finished turn", turn)
-
+				running = false
+				fmt.Println("Quitting")
 				for i := 0; i < p.threads; i++ {
-					turnDone[i] <- true
+					quit[i] <- true
+				}
+				turn = p.turns + 1
+				for i := 0; i < p.threads; i++ {
 					aliveNo += <-al
 				}
+				for i := 0; i < p.threads; i++ {
+					turnDone[i] <- true
+				}
+			}
+			if ch == 's' {
+
+				fmt.Println("s pressed")
+				//wg.Add(p.threads)
+				spressed = true
+				for i := 0; i < p.threads; i++ {
+					state[i] <- true
+					fmt.Println("s command sent to thread", i)
+				}
+			}
+			if ch == 'p' {
+				if paused == true {
+					fmt.Println("Continuing")
+					paused = false
+				} else {
+					fmt.Println("Paused")
+					paused = true
+				}
+			}
+		default:
+		}
+
+		if running == true {
+			//fmt.Println("all threads have finished turn", turn)
+
+			for i := 0; i < p.threads; i++ {
+				turnDone[i] <- true
+				aliveNo += <-al
+			}
+
+			if spressed == true {
+				spressed = false
+				world = allocateSlice(p)
+				fmt.Println("finished waitingh")
+				for i := 0; i < p.threads; i++ {
+					update(world, final)
+				}
+				printPGM(world, d, p)
 			}
 		}
+
 	}
-	fmt.Println("wg2 waiting")
 	wg2.Wait()
-	fmt.Println("wg2 waited")
 	world = allocateSlice(p)
 	for i := 0; i < p.threads; i++ {
 		update(world, final)
 	}
-	fmt.Println("updated finished")
 
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
