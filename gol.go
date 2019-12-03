@@ -14,7 +14,7 @@ func allocateSlice(p golParams) [][]byte {
 	}
 	return world
 }
-func worker(p golParams, world [][]byte, swg *sync.WaitGroup, line1 int, line2 int, masterWG *sync.WaitGroup) {
+func worker(p golParams, world [][]byte, turnDone chan bool, isdone chan bool, line1 int, line2 int, masterWG *sync.WaitGroup) {
 
 	dx := []int{-1, 0, 1, 1, 1, 0, -1, -1}
 	dy := []int{-1, -1, -1, 0, 1, 1, 1, 0}
@@ -63,15 +63,15 @@ func worker(p golParams, world [][]byte, swg *sync.WaitGroup, line1 int, line2 i
 				}
 			}
 		}
+
+		isdone <- true
+		<-turnDone
 		//fmt.Println(line1, line2, myGroup, next, prev)
 		//myGroup.Done()
 
 		//next.Wait()
 		//prev.Wait()
-		swg.Done()
-		fmt.Println(line1, "finished", swg)
-		swg.Wait()
-		fmt.Println(line1, "entering update now")
+
 		for _, change := range changes {
 			if world[change.y][change.x] != 0 {
 				world[change.y][change.x] = 0
@@ -79,8 +79,6 @@ func worker(p golParams, world [][]byte, swg *sync.WaitGroup, line1 int, line2 i
 				world[change.y][change.x] = 255
 			}
 		}
-		swg.Add(1)
-		//myGroup.Add(1)
 	}
 	masterWG.Done()
 }
@@ -109,19 +107,35 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 	//	workerGroup := make([]sync.WaitGroup, p.threads)
 
 	var wg sync.WaitGroup
-	var swg sync.WaitGroup
 	wg.Add(p.threads)
-	swg.Add(p.threads)
 	//workerGroup[0].Add(1)
 	//go worker(p, world, &workerGroup[p.threads-1], &workerGroup[0], &workerGroup[1], 0, (p.imageHeight / p.threads), &wg)
+
+	turnDone := make([]chan bool, p.threads)
+	for i := 0; i < p.threads; i++ {
+		turnDone[i] = make(chan bool, 10)
+	}
+	isDone := make(chan bool, 16)
 
 	for i := 0; i < p.threads; i++ {
 
 		line1 := (p.imageHeight / p.threads) * i
 		line2 := (p.imageHeight / p.threads) * (i + 1)
 		//workerGroup[i].Add(1)
-		go worker(p, world, &swg, line1, line2, &wg)
+		go worker(p, world, turnDone[i], isDone, line1, line2, &wg)
 
+	}
+
+	for turn := 0; turn < p.turns; turn++ {
+
+		for i := 0; i < p.threads; i++ {
+			<-isDone
+		}
+		for i := 0; i < p.threads; i++ {
+			turnDone[i] <- true
+			fmt.Println("Notified", i, "-th  thread")
+		}
+		fmt.Println("all threads have finished za turn", turn)
 	}
 
 	/*	if p.threads > 1 {
