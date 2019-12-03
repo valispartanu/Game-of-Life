@@ -67,12 +67,10 @@ func worker(p golParams, input chan cell, changes chan cell, thread int) {
 			if world[y][x] != 0 {
 				if nb < 2 || nb > 3 {
 					changes <- cell{x, y}
-					//fmt.Println("cell", x, y, "is dead now.")
 				}
 			} else {
 				if nb == 3 {
 					changes <- cell{x, y}
-					//fmt.Println("cell", x, y, "is alive now.")
 				}
 			}
 		}
