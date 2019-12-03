@@ -91,7 +91,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 
 	aliveCells := make(chan []cell)
 
-	go distributor(p, dChans, aliveCells, keyChan)
+	go distributor(p, dChans, aliveCells)
 	go pgmIo(p, ioChans)
 
 	alive := <-aliveCells
