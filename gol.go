@@ -302,12 +302,13 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 
 		if paused == true && running == true {
 			turn--
+		} else {
+			for i := 0; i < p.threads; i++ {
+				//each worker notifies the distributor that it finished his work on the current turn
+				<-isDone
+			}
 		}
 
-		for i := 0; i < p.threads; i++ {
-			//each worker notifies the distributor that it finished his work on the current turn
-			<-isDone
-		}
 		select {
 		case ch := <-k:
 			if ch == 'q' && running == true {
@@ -341,7 +342,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell, k <-chan ru
 		default:
 		}
 
-		if running == true {
+		if running == true && paused == false {
 
 			for i := 0; i < p.threads; i++ {
 				turnDone[i] <- true
